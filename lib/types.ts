@@ -19,16 +19,36 @@ export interface Pokemon {
   types: PokemonType[];
   stats: PokemonStat[];
   sprites: {
+    front_default: string | null;
     other: {
-      "official-artwork": { front_default: string };
+      'official-artwork': { front_default: string };
     };
   };
   height: number;
   weight: number;
+  species: { url: string };
 }
 
 export interface PokemonListResponse {
   count: number;
   next: string | null;
   results: PokemonListItem[];
+}
+
+export interface SpeciesResponse {
+  evolution_chain: { url: string };
+}
+
+export interface ChainLink {
+  species: { name: string; url: string };
+  evolves_to: ChainLink[];
+}
+
+export interface EvolutionChainResponse {
+  chain: ChainLink;
+}
+
+export interface EvolutionNode {
+  id: number;
+  name: string;
 }

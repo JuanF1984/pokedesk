@@ -4,13 +4,21 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
-import { fetchPokemon, capitalize, formatId } from '@/lib/api';
+import {
+  fetchPokemon,
+  fetchSpecies,
+  fetchEvolutionChainData,
+  flattenEvolutionChain,
+  capitalize,
+  formatId,
+} from '@/lib/api';
 import { getTypeColor } from '@/lib/typeColors';
-import type { Pokemon } from '@/lib/types';
+import type { Pokemon, EvolutionNode } from '@/lib/types';
 import { TypeBadge } from '@/components/TypeBadge';
 import { StatBar } from '@/components/StatBar';
 import { PokedexFrame } from '@/components/PokedexFrame';
 import { PokeballLoader } from '@/components/PokeballLoader';
+import { EvolutionChain } from '@/components/EvolutionChain';
 
 export default function PokemonDetail() {
   const params = useParams();
@@ -18,15 +26,26 @@ export default function PokemonDetail() {
   const id = params.id as string;
   const [pokemon, setPokemon] = useState<Pokemon | null>(null);
   const [loading, setLoading] = useState(true);
+  const [evolutionChains, setEvolutionChains] = useState<EvolutionNode[][] | null>(null);
 
   useEffect(() => {
     setLoading(true);
     setPokemon(null);
+    setEvolutionChains(null);
     fetchPokemon(id)
       .then(setPokemon)
       .catch(() => router.push('/'))
       .finally(() => setLoading(false));
   }, [id, router]);
+
+  // Fetch evolution chain after pokemon data arrives (silent fail)
+  useEffect(() => {
+    if (!pokemon) return;
+    fetchSpecies(pokemon.species.url)
+      .then((s) => fetchEvolutionChainData(s.evolution_chain.url))
+      .then((data) => setEvolutionChains(flattenEvolutionChain(data.chain)))
+      .catch(() => {});
+  }, [pokemon]);
 
   if (loading || !pokemon) {
     return (
@@ -157,6 +176,15 @@ export default function PokemonDetail() {
               <StatBar key={s.stat.name} statName={s.stat.name} value={s.base_stat} />
             ))}
           </div>
+
+          {/* Evolution chain */}
+          {evolutionChains && (
+            <EvolutionChain
+              chains={evolutionChains}
+              currentId={pokemon.id}
+              accentColor={accentColor}
+            />
+          )}
         </div>
 
         {/* Prev / Next navigation */}

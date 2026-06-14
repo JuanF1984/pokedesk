@@ -1,4 +1,4 @@
-import type { Pokemon, PokemonListResponse } from './types';
+import type { Pokemon, PokemonListResponse, SpeciesResponse, EvolutionChainResponse, ChainLink, EvolutionNode } from './types';
 
 const BASE = 'https://pokeapi.co/api/v2';
 
@@ -20,6 +20,35 @@ export async function fetchPokemonBatch(items: { name: string; url: string }[]):
     return parts[parts.length - 1];
   });
   return Promise.all(ids.map((id) => fetchPokemon(id)));
+}
+
+export async function fetchSpecies(url: string): Promise<SpeciesResponse> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Failed to fetch species');
+  return res.json();
+}
+
+export async function fetchEvolutionChainData(url: string): Promise<EvolutionChainResponse> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Failed to fetch evolution chain');
+  return res.json();
+}
+
+function extractSpeciesId(url: string): number {
+  const parts = url.replace(/\/$/, '').split('/');
+  return parseInt(parts[parts.length - 1], 10);
+}
+
+export function flattenEvolutionChain(chain: ChainLink): EvolutionNode[][] {
+  function traverse(node: ChainLink, path: EvolutionNode[]): EvolutionNode[][] {
+    const current: EvolutionNode[] = [
+      ...path,
+      { id: extractSpeciesId(node.species.url), name: node.species.name },
+    ];
+    if (node.evolves_to.length === 0) return [current];
+    return node.evolves_to.flatMap((child) => traverse(child, current));
+  }
+  return traverse(chain, []);
 }
 
 export function capitalize(name: string): string {
