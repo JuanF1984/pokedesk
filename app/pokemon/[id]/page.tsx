@@ -29,10 +29,7 @@ export default function PokemonDetail() {
   const [loading, setLoading] = useState(true);
   const [evolutionChains, setEvolutionChains] = useState<EvolutionNode[][] | null>(null);
 
-  const { playSound } = usePokemonSound(
-    pokemon?.id ?? 0,
-    pokemon?.name ?? ''
-  );
+  const { playSound } = usePokemonSound(pokemon?.name ?? '');
 
   useEffect(() => {
     setLoading(true);
