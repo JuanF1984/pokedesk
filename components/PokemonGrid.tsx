@@ -7,7 +7,7 @@ import { PokemonCard } from './PokemonCard';
 import { PokeballLoader } from './PokeballLoader';
 
 const BATCH = 20;
-const SCROLL_KEY = 'pokedex-scroll';
+const LAST_ID_KEY = 'pokedex-last-id';
 
 // Module-level cache — survives unmount/remount within the same browser session
 let cachedPokemons: Pokemon[] = [];
@@ -19,17 +19,24 @@ export function PokemonGrid() {
   const [offset, setOffset] = useState(cachedOffset);
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(cachedHasMore);
+  const [restoring, setRestoring] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
 
-  // Read scroll once, synchronously, before any effects run.
-  // Only restore if the cache is warm (same session); ignore on page reload.
-  const [savedScroll] = useState<number | null>(() => {
+  // Read target id once synchronously before any effects.
+  // useState lazy initializer runs exactly once even in StrictMode's double-invoke,
+  // so removing the sessionStorage key here is safe — no race with cleanup/remount.
+  const [targetId] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
-    const val = sessionStorage.getItem(SCROLL_KEY);
-    if (!val) return null;
-    sessionStorage.removeItem(SCROLL_KEY);
-    return cachedPokemons.length > 0 ? parseInt(val, 10) : null;
+    const id = sessionStorage.getItem(LAST_ID_KEY);
+    if (!id) return null;
+    sessionStorage.removeItem(LAST_ID_KEY);
+    // If cache is cold (page reload, hot-reload in dev) skip restoration
+    if (cachedPokemons.length === 0) {
+      console.log('[pokedex] cache vacío, omitiendo restauración de scroll');
+      return null;
+    }
+    return id;
   });
 
   const loadMore = useCallback(async () => {
@@ -64,15 +71,42 @@ export function PokemonGrid() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Restore scroll after first paint
+  // Scroll restoration: wait for the target card to appear in the DOM, then scrollIntoView.
+  // Uses setTimeout for the 3s safety net (clearable) + rAF loop to find the element fast.
   useEffect(() => {
-    if (savedScroll !== null) {
-      requestAnimationFrame(() => {
-        window.scrollTo({ top: savedScroll, behavior: 'instant' });
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (!targetId) return;
+
+    console.log('[pokedex] restaurando posición para card:', targetId);
+    console.log('[pokedex] tarjetas en DOM:',
+      Array.from(document.querySelectorAll('[id^="pokemon-card-"]')).map((el) => el.id));
+
+    setRestoring(true);
+    let cancelled = false;
+
+    const timeout = setTimeout(() => {
+      console.warn('[pokedex] elemento no encontrado después de 3s, liberando overlay');
+      if (!cancelled) setRestoring(false);
+    }, 3000);
+
+    const waitForElement = () => {
+      if (cancelled) return;
+      const el = document.getElementById(`pokemon-card-${String(targetId)}`);
+      if (el) {
+        clearTimeout(timeout);
+        el.scrollIntoView({ block: 'center', behavior: 'instant' });
+        setRestoring(false);
+      } else {
+        requestAnimationFrame(waitForElement);
+      }
+    };
+
+    requestAnimationFrame(waitForElement);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
+  }, [targetId]);
 
   // Infinite scroll via IntersectionObserver
   useEffect(() => {
@@ -94,6 +128,16 @@ export function PokemonGrid() {
 
   return (
     <div className="p-3">
+      {/* Restoration overlay — covers the screen while scrollIntoView positions the grid */}
+      {restoring && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ background: '#0d0d1a' }}
+        >
+          <PokeballLoader size={64} />
+        </div>
+      )}
+
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
         {pokemon.map((p) => (
           <div

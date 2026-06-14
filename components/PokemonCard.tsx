@@ -16,9 +16,10 @@ export function PokemonCard({ pokemon }: PokemonCardProps) {
 
   return (
     <Link
+      id={`pokemon-card-${pokemon.id}`}
       href={`/pokemon/${pokemon.id}`}
       className="group block"
-      onClick={() => sessionStorage.setItem('pokedex-scroll', window.scrollY.toString())}
+      onClick={() => sessionStorage.setItem('pokedex-last-id', pokemon.id.toString())}
     >
       <div
         className="relative rounded-2xl overflow-hidden border-2 border-black/30 shadow-[0_4px_12px_rgba(0,0,0,0.4)] transition-all duration-200 active:scale-95 hover:scale-105 hover:shadow-[0_8px_24px_rgba(0,0,0,0.5)] cursor-pointer"
