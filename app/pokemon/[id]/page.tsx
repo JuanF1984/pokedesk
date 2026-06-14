@@ -19,6 +19,7 @@ import { StatBar } from '@/components/StatBar';
 import { PokedexFrame } from '@/components/PokedexFrame';
 import { PokeballLoader } from '@/components/PokeballLoader';
 import { EvolutionChain } from '@/components/EvolutionChain';
+import { usePokemonSound } from '@/lib/usePokemonSound';
 
 export default function PokemonDetail() {
   const params = useParams();
@@ -27,6 +28,11 @@ export default function PokemonDetail() {
   const [pokemon, setPokemon] = useState<Pokemon | null>(null);
   const [loading, setLoading] = useState(true);
   const [evolutionChains, setEvolutionChains] = useState<EvolutionNode[][] | null>(null);
+
+  const { playSound } = usePokemonSound(
+    pokemon?.id ?? 0,
+    pokemon?.name ?? ''
+  );
 
   useEffect(() => {
     setLoading(true);
@@ -37,6 +43,16 @@ export default function PokemonDetail() {
       .catch(() => router.push('/'))
       .finally(() => setLoading(false));
   }, [id, router]);
+
+  // Play cry + speak name when pokemon loads
+  useEffect(() => {
+    if (!pokemon) return;
+    playSound();
+    return () => {
+      window.speechSynthesis?.cancel();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pokemon?.id]);
 
   // Fetch evolution chain after pokemon data arrives (silent fail)
   useEffect(() => {
