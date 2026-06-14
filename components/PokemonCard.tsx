@@ -15,7 +15,11 @@ export function PokemonCard({ pokemon }: PokemonCardProps) {
   const artwork = pokemon.sprites.other['official-artwork'].front_default;
 
   return (
-    <Link href={`/pokemon/${pokemon.id}`} className="group block">
+    <Link
+      href={`/pokemon/${pokemon.id}`}
+      className="group block"
+      onClick={() => sessionStorage.setItem('pokedex-scroll', window.scrollY.toString())}
+    >
       <div
         className="relative rounded-2xl overflow-hidden border-2 border-black/30 shadow-[0_4px_12px_rgba(0,0,0,0.4)] transition-all duration-200 active:scale-95 hover:scale-105 hover:shadow-[0_8px_24px_rgba(0,0,0,0.5)] cursor-pointer"
         style={{ background: `linear-gradient(135deg, ${bgColor}ee, ${bgColor}99)` }}
