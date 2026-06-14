@@ -8,16 +8,29 @@ import { PokeballLoader } from './PokeballLoader';
 
 const BATCH = 20;
 const SCROLL_KEY = 'pokedex-scroll';
-const COUNT_KEY = 'pokedex-loaded-count';
+
+// Module-level cache — survives unmount/remount within the same browser session
+let cachedPokemons: Pokemon[] = [];
+let cachedOffset: number = 0;
+let cachedHasMore: boolean = true;
 
 export function PokemonGrid() {
-  const [pokemon, setPokemon] = useState<Pokemon[]>([]);
-  const [offset, setOffset] = useState(0);
+  const [pokemon, setPokemon] = useState<Pokemon[]>(cachedPokemons);
+  const [offset, setOffset] = useState(cachedOffset);
   const [loading, setLoading] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
+  const [hasMore, setHasMore] = useState(cachedHasMore);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
-  const pendingScrollRef = useRef<number | null>(null);
+
+  // Read scroll once, synchronously, before any effects run.
+  // Only restore if the cache is warm (same session); ignore on page reload.
+  const [savedScroll] = useState<number | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const val = sessionStorage.getItem(SCROLL_KEY);
+    if (!val) return null;
+    sessionStorage.removeItem(SCROLL_KEY);
+    return cachedPokemons.length > 0 ? parseInt(val, 10) : null;
+  });
 
   const loadMore = useCallback(async () => {
     if (loadingRef.current || !hasMore) return;
@@ -26,11 +39,15 @@ export function PokemonGrid() {
 
     try {
       const list = await fetchPokemonList(offset, BATCH);
-      if (!list.next) setHasMore(false);
+      if (!list.next) {
+        cachedHasMore = false;
+        setHasMore(false);
+      }
       const batch = await fetchPokemonBatch(list.results);
-      sessionStorage.setItem(COUNT_KEY, (offset + batch.length).toString());
-      setPokemon((prev) => [...prev, ...batch]);
-      setOffset((prev) => prev + BATCH);
+      cachedPokemons = [...cachedPokemons, ...batch];
+      cachedOffset = offset + BATCH;
+      setPokemon(cachedPokemons);
+      setOffset(cachedOffset);
     } catch (err) {
       console.error(err);
     } finally {
@@ -39,48 +56,23 @@ export function PokemonGrid() {
     }
   }, [offset, hasMore]);
 
-  // Initial load — restore saved state or start fresh
+  // Initial load — skip if cache already has data
   useEffect(() => {
-    const savedScroll = sessionStorage.getItem(SCROLL_KEY);
-    const savedCount = sessionStorage.getItem(COUNT_KEY);
-
-    if (savedScroll && savedCount) {
-      const count = parseInt(savedCount, 10);
-      pendingScrollRef.current = parseInt(savedScroll, 10);
-      sessionStorage.removeItem(SCROLL_KEY);
-      sessionStorage.removeItem(COUNT_KEY);
-
-      loadingRef.current = true;
-      setLoading(true);
-
-      fetchPokemonList(0, count)
-        .then(async (list) => {
-          if (!list.next) setHasMore(false);
-          const batch = await fetchPokemonBatch(list.results);
-          setOffset(batch.length);
-          setPokemon(batch);
-        })
-        .catch(console.error)
-        .finally(() => {
-          setLoading(false);
-          loadingRef.current = false;
-        });
-    } else {
+    if (cachedPokemons.length === 0) {
       loadMore();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Restore scroll position after pokemon list renders
+  // Restore scroll after first paint
   useEffect(() => {
-    if (pendingScrollRef.current !== null && pokemon.length > 0) {
-      const y = pendingScrollRef.current;
-      pendingScrollRef.current = null;
+    if (savedScroll !== null) {
       requestAnimationFrame(() => {
-        window.scrollTo({ top: y, behavior: 'instant' });
+        window.scrollTo({ top: savedScroll, behavior: 'instant' });
       });
     }
-  }, [pokemon]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Infinite scroll via IntersectionObserver
   useEffect(() => {
@@ -117,7 +109,6 @@ export function PokemonGrid() {
       {/* Sentinel for infinite scroll */}
       <div ref={sentinelRef} className="h-4" />
 
-      {/* Loading indicator */}
       {loading && (
         <div className="flex justify-center py-8">
           <PokeballLoader size={48} />
