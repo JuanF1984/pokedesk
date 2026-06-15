@@ -20,6 +20,7 @@ import { PokedexFrame } from '@/components/PokedexFrame';
 import { PokeballLoader } from '@/components/PokeballLoader';
 import { EvolutionChain } from '@/components/EvolutionChain';
 import { usePokemonSound } from '@/lib/usePokemonSound';
+import { TYPE_NAMES_ES } from '@/lib/typeNames';
 
 export default function PokemonDetail() {
   const params = useParams();
@@ -31,7 +32,14 @@ export default function PokemonDetail() {
   const [description, setDescription] = useState<string | undefined>(undefined);
   const [descLang, setDescLang] = useState<string | undefined>(undefined);
 
-  const { playSound } = usePokemonSound(pokemon?.name ?? '', description, descLang);
+  const typeText = pokemon
+    ? (() => {
+        const tipos = pokemon.types.map(t => TYPE_NAMES_ES[t.type.name] ?? t.type.name);
+        return tipos.length === 1 ? `Tipo ${tipos[0]}` : `Tipos ${tipos.join(' y ')}`;
+      })()
+    : undefined;
+
+  const { playSound } = usePokemonSound(pokemon?.name ?? '', typeText, description, descLang);
 
   useEffect(() => {
     setLoading(true);
