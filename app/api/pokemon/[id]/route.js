@@ -21,5 +21,8 @@ export async function GET(request, { params }) {
   }
 
   const data = await response.json();
-  return Response.json({ name: data.name });
+  return Response.json({ 
+    name: data.name,
+    type: data.types[0].type.name
+  });
 }
