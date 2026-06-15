@@ -28,13 +28,17 @@ export default function PokemonDetail() {
   const [pokemon, setPokemon] = useState<Pokemon | null>(null);
   const [loading, setLoading] = useState(true);
   const [evolutionChains, setEvolutionChains] = useState<EvolutionNode[][] | null>(null);
+  const [description, setDescription] = useState<string | undefined>(undefined);
+  const [descLang, setDescLang] = useState<string | undefined>(undefined);
 
-  const { playSound } = usePokemonSound(pokemon?.name ?? '');
+  const { playSound } = usePokemonSound(pokemon?.name ?? '', description, descLang);
 
   useEffect(() => {
     setLoading(true);
     setPokemon(null);
     setEvolutionChains(null);
+    setDescription(undefined);
+    setDescLang(undefined);
     fetchPokemon(id)
       .then(setPokemon)
       .catch(() => router.push('/'))
@@ -51,11 +55,22 @@ export default function PokemonDetail() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pokemon?.id]);
 
-  // Fetch evolution chain after pokemon data arrives (silent fail)
+  // Fetch species: extract description + evolution chain (silent fail)
   useEffect(() => {
     if (!pokemon) return;
     fetchSpecies(pokemon.species.url)
-      .then((s) => fetchEvolutionChainData(s.evolution_chain.url))
+      .then((s) => {
+        const entries = s.flavor_text_entries;
+        const pool = entries.filter(e => e.language.name === 'es').length > 0
+          ? entries.filter(e => e.language.name === 'es')
+          : entries.filter(e => e.language.name === 'en');
+        if (pool.length > 0) {
+          const entry = pool[Math.floor(Math.random() * pool.length)];
+          setDescription(entry.flavor_text.replace(/\f/g, ' ').replace(/\n/g, ' ').trim());
+          setDescLang(entry.language.name === 'es' ? 'es-MX' : 'en-US');
+        }
+        return fetchEvolutionChainData(s.evolution_chain.url);
+      })
       .then((data) => setEvolutionChains(flattenEvolutionChain(data.chain)))
       .catch(() => {});
   }, [pokemon]);
