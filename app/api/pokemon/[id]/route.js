@@ -1,4 +1,9 @@
-import sharp from "sharp";
+// sharp is a native module: importing it statically means any load failure
+// (missing platform binary, bad bundling on the deploy target, etc.) crashes
+// this whole route module before our try/catch ever runs. Load it lazily and
+// defensively instead, so the bitmap feature can fail without ever taking
+// down the base { name, type } response.
+export const runtime = "nodejs";
 
 const MIN_SIZE = 8;
 const MAX_SIZE = 64;
@@ -27,32 +32,56 @@ function packMonochromeBitmap(pixels, width, height) {
   return bitmap;
 }
 
+async function loadSharp() {
+  try {
+    const mod = await import("sharp");
+    return mod.default ?? mod;
+  } catch (err) {
+    console.error("[pokemon/bitmap] sharp failed to load:", err?.message ?? err);
+    return null;
+  }
+}
+
 async function buildBitmap(spriteUrl, width, height) {
-  const spriteRes = await fetch(spriteUrl);
+  const sharp = await loadSharp();
+  if (!sharp) return null;
+
+  let spriteRes;
+  try {
+    spriteRes = await fetch(spriteUrl);
+  } catch (err) {
+    console.error("[pokemon/bitmap] sprite fetch failed:", err?.message ?? err);
+    return null;
+  }
   if (!spriteRes.ok) return null;
 
-  const spriteBuffer = Buffer.from(await spriteRes.arrayBuffer());
+  try {
+    const spriteBuffer = Buffer.from(await spriteRes.arrayBuffer());
 
-  const { data: pixels, info } = await sharp(spriteBuffer)
-    .resize(width, height, {
-      fit: "contain",
-      background: { r: 0, g: 0, b: 0, alpha: 1 },
-    })
-    .flatten({ background: { r: 0, g: 0, b: 0 } })
-    .grayscale()
-    .threshold(THRESHOLD)
-    .raw()
-    .toBuffer({ resolveWithObject: true });
+    const { data: pixels, info } = await sharp(spriteBuffer)
+      .resize(width, height, {
+        fit: "contain",
+        background: { r: 0, g: 0, b: 0, alpha: 1 },
+      })
+      .flatten({ background: { r: 0, g: 0, b: 0 } })
+      .grayscale()
+      .threshold(THRESHOLD)
+      .raw()
+      .toBuffer({ resolveWithObject: true });
 
-  const packed = packMonochromeBitmap(pixels, info.width, info.height);
+    const packed = packMonochromeBitmap(pixels, info.width, info.height);
 
-  return {
-    width: info.width,
-    height: info.height,
-    format: "adafruit_gfx_1bpp",
-    encoding: "base64",
-    data: packed.toString("base64"),
-  };
+    return {
+      width: info.width,
+      height: info.height,
+      format: "adafruit_gfx_1bpp",
+      encoding: "base64",
+      data: packed.toString("base64"),
+    };
+  } catch (err) {
+    console.error("[pokemon/bitmap] processing failed:", err?.message ?? err);
+    return null;
+  }
 }
 
 export async function GET(request, { params }) {
@@ -88,7 +117,10 @@ export async function GET(request, { params }) {
   if (spriteUrl) {
     try {
       bitmap = await buildBitmap(spriteUrl, width, height);
-    } catch {
+    } catch (err) {
+      // Last-resort net: buildBitmap already catches its own errors, but the
+      // bitmap feature must never be able to take down the base response.
+      console.error("[pokemon/bitmap] unexpected failure:", err?.message ?? err);
       bitmap = null;
     }
   }
