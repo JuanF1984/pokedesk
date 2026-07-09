@@ -5,13 +5,16 @@ const nextConfig: NextConfig = {
     unoptimized: true,
   },
   // sharp is a native module used by app/api/pokemon/[id]/route.js to build
-  // OLED bitmaps. It must stay unbundled (serverExternalPackages) and its
-  // platform-specific native binaries must be force-included in the traced
-  // output, or the Vercel serverless function fails to load it at runtime.
+  // OLED bitmaps. serverExternalPackages keeps it unbundled and lets Next's
+  // automatic file tracing (@vercel/nft) resolve its native binaries.
+  //
+  // Do NOT add a manual outputFileTracingIncludes glob for sharp/@img here:
+  // pnpm nests the platform binary (@img/sharp-<platform>) two symlink levels
+  // deep inside sharp's own node_modules. A raw glob walks those symlinks
+  // literally instead of dereferencing them, which produced an invalid,
+  // symlinked Vercel deployment package. nft's dependency-graph-based tracing
+  // resolves symlinks to real files correctly, which a directory glob does not.
   serverExternalPackages: ["sharp"],
-  outputFileTracingIncludes: {
-    "/api/pokemon/**/*": ["./node_modules/sharp/**/*", "./node_modules/@img/**/*"],
-  },
 };
 
 export default nextConfig;
