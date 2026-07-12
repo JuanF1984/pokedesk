@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 const MIN_SIZE = 8;
 const MAX_SIZE = 64;
 const DEFAULT_SIZE = 48;
-const THRESHOLD = 128;
+const THRESHOLD = 90;
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -65,6 +65,7 @@ async function buildBitmap(spriteUrl, width, height) {
       })
       .flatten({ background: { r: 0, g: 0, b: 0 } })
       .grayscale()
+      .normalise()
       .threshold(THRESHOLD)
       .raw()
       .toBuffer({ resolveWithObject: true });
