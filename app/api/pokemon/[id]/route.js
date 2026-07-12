@@ -1,51 +1,20 @@
-// sharp is a native module: importing it statically means any load failure
-// (missing platform binary, bad bundling on the deploy target, etc.) crashes
-// this whole route module before our try/catch ever runs. Load it lazily and
-// defensively instead, so the bitmap feature can fail without ever taking
-// down the base { name, type } response.
+// Bitmap generation (Sharp) is loaded lazily and defensively inside
+// lib/spriteBitmap.js: any failure there (missing platform binary, bad
+// sprite data, etc.) must never crash this route or take down the base
+// { name, type } response.
 export const runtime = "nodejs";
+
+import { buildBitmapFromSprite } from "@/lib/spriteBitmap";
 
 const MIN_SIZE = 8;
 const MAX_SIZE = 64;
 const DEFAULT_SIZE = 48;
-const THRESHOLD = 90;
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
-// Packs 8-bit grayscale pixels (0 or 255 after threshold) into the 1bpp,
-// MSB-first, row-padded-to-byte layout that Adafruit_GFX::drawBitmap() expects.
-function packMonochromeBitmap(pixels, width, height) {
-  const rowBytes = Math.ceil(width / 8);
-  const bitmap = Buffer.alloc(rowBytes * height);
-
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      if (pixels[y * width + x] > THRESHOLD) {
-        const byteIndex = y * rowBytes + (x >> 3);
-        bitmap[byteIndex] |= 1 << (7 - (x % 8));
-      }
-    }
-  }
-
-  return bitmap;
-}
-
-async function loadSharp() {
-  try {
-    const mod = await import("sharp");
-    return mod.default ?? mod;
-  } catch (err) {
-    console.error("[pokemon/bitmap] sharp failed to load:", err?.message ?? err);
-    return null;
-  }
-}
-
-async function buildBitmap(spriteUrl, width, height) {
-  const sharp = await loadSharp();
-  if (!sharp) return null;
-
+async function buildBitmap(spriteUrl, width, height, debug) {
   let spriteRes;
   try {
     spriteRes = await fetch(spriteUrl);
@@ -57,28 +26,7 @@ async function buildBitmap(spriteUrl, width, height) {
 
   try {
     const spriteBuffer = Buffer.from(await spriteRes.arrayBuffer());
-
-    const { data: pixels, info } = await sharp(spriteBuffer)
-      .resize(width, height, {
-        fit: "contain",
-        background: { r: 0, g: 0, b: 0, alpha: 1 },
-      })
-      .flatten({ background: { r: 0, g: 0, b: 0 } })
-      .grayscale()
-      .normalise()
-      .threshold(THRESHOLD)
-      .raw()
-      .toBuffer({ resolveWithObject: true });
-
-    const packed = packMonochromeBitmap(pixels, info.width, info.height);
-
-    return {
-      width: info.width,
-      height: info.height,
-      format: "adafruit_gfx_1bpp",
-      encoding: "base64",
-      data: packed.toString("base64"),
-    };
+    return await buildBitmapFromSprite(spriteBuffer, width, height, { debug });
   } catch (err) {
     console.error("[pokemon/bitmap] processing failed:", err?.message ?? err);
     return null;
@@ -95,6 +43,10 @@ export async function GET(request, { params }) {
   const { searchParams } = new URL(request.url);
   const width = clamp(parseInt(searchParams.get("w"), 10) || DEFAULT_SIZE, MIN_SIZE, MAX_SIZE);
   const height = clamp(parseInt(searchParams.get("h"), 10) || DEFAULT_SIZE, MIN_SIZE, MAX_SIZE);
+  // ?debug=1 attaches the losing candidates' scores alongside the winning
+  // strategy, for comparing strategies on a live sprite. Never part of the
+  // default response shape.
+  const debug = searchParams.get("debug") === "1";
 
   let response;
   try {
@@ -117,7 +69,7 @@ export async function GET(request, { params }) {
   let bitmap = null;
   if (spriteUrl) {
     try {
-      bitmap = await buildBitmap(spriteUrl, width, height);
+      bitmap = await buildBitmap(spriteUrl, width, height, debug);
     } catch (err) {
       // Last-resort net: buildBitmap already catches its own errors, but the
       // bitmap feature must never be able to take down the base response.
