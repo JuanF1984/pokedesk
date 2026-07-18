@@ -26,6 +26,10 @@ const nextConfig: NextConfig = {
       "./node_modules/.pnpm/@img+sharp-linux-x64@*/node_modules/@img/sharp-linux-x64/**/*",
       "./node_modules/.pnpm/@img+sharp-libvips-linux-x64@*/node_modules/@img/sharp-libvips-linux-x64/**/*",
     ],
+    // Not in public/ on purpose (see app/api/audio-test/route.js) — force
+    // the static asset into the function bundle explicitly rather than
+    // relying on nft's auto-trace of the fs.readFileSync() call.
+    "/api/audio-test/**/*": ["./assets/audio/**/*"],
   },
 };
 
