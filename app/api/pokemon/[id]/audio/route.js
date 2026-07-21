@@ -50,20 +50,30 @@ function logError(id, message, err) {
   console.error(`${LOG_PREFIX} Error id=${id} ${message}: ${err?.message ?? err}`);
 }
 
+function computeTextHash(text) {
+  return createHash("sha256").update(text).digest("hex").slice(0, 16);
+}
+
 function blobPathname(id, text) {
-  const hash = createHash("sha256").update(text).digest("hex").slice(0, 16);
-  return `pokemon/audio/${id}-${hash}.mp3`;
+  return `pokemon/audio/${id}-${computeTextHash(text)}.mp3`;
 }
 
 // Returns the cached MP3 bytes, or null on a cache miss / read failure --
 // either way the caller falls back to regenerating via TTS.
+//
+// TEMP diagnostic logging (see conversation): distinguishes "genuinely not
+// found" from "head() itself failed" -- today both are treated as a MISS
+// by the caller (unchanged for now), but only the first is expected.
 async function readCachedAudio(id, pathname) {
   let meta;
   try {
     meta = await head(pathname);
+    console.log(`[AUDIO] Blob head encontrado pathname=${pathname} id=${id}`);
   } catch (err) {
-    if (!(err instanceof BlobNotFoundError)) {
-      logError(id, "blob head failed", err);
+    if (err instanceof BlobNotFoundError) {
+      console.log(`[AUDIO] Blob head no encontrado pathname=${pathname} id=${id}`);
+    } else {
+      logError(id, `Blob head error pathname=${pathname}`, err);
     }
     return null;
   }
@@ -156,6 +166,10 @@ export async function GET(request, { params }) {
   const dataMs = Date.now() - dataStartedAt;
 
   const pathname = blobPathname(audioText.id, audioText.text);
+  const textHash = computeTextHash(audioText.text);
+  console.log(
+    `[AUDIO] pathname=${pathname} textHash=${textHash} textLength=${audioText.text.length} id=${audioText.id}`
+  );
 
   const cacheStartedAt = Date.now();
   let mp3 = await readCachedAudio(audioText.id, pathname);
@@ -187,7 +201,7 @@ export async function GET(request, { params }) {
 
     const blobStartedAt = Date.now();
     try {
-      await put(pathname, mp3, {
+      const blob = await put(pathname, mp3, {
         access: "public",
         addRandomSuffix: false,
         allowOverwrite: true,
@@ -195,6 +209,7 @@ export async function GET(request, { params }) {
       });
       blobMs = Date.now() - blobStartedAt;
       log("Guardado", audioText.id, `pathname=${pathname} bytes=${mp3.length} blobMs=${blobMs}`);
+      console.log(`[AUDIO] Blob guardado pathname=${blob.pathname} url=${blob.url} id=${audioText.id}`);
     } catch (err) {
       blobMs = Date.now() - blobStartedAt;
       // Cache write failing must not break the response -- the CYD/web
